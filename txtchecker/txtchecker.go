@@ -7,11 +7,15 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
+	"io/ioutil"
+	"strings"
 )
 
 func main() {
 	// open/prep input file
-	inFilename := "../feed.txt"
+	start := time.Now()
+	inFilename := "../sampleFeed.txt"
 	inFile, err := os.Open(inFilename)
 	if err != nil {
 		panic(err)
@@ -33,7 +37,7 @@ func main() {
 	// TODO: understand why that was happening
 	taskChan := make(chan Task, 40000)
 	resultChan := make(chan Result, 40000)
-	workers := 8
+	workers := 100
 	for w := 0; w < workers; w++ {
 		go checkWorker(w+1, taskChan, resultChan)
 	}
@@ -68,6 +72,9 @@ func main() {
 	if err = resultWriter.Error(); err != nil {
 		panic(err)
 	}
+
+	elapsed := time.Since(start)
+    fmt.Println("Async link checking for", elapsed.Seconds(), "seconds")
 }
 
 type Task struct {
@@ -109,7 +116,7 @@ func checker(client *http.Client, t Task) Result {
 		result.ErrorMsg = err.Error()
 		return result
 	}
-	req.Header.Add("User-Agent", "facebookexternalhit/1.1")
+	// req.Header.Add("User-Agent", "facebookexternalhit/1.1")
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -119,7 +126,23 @@ func checker(client *http.Client, t Task) Result {
 	defer res.Body.Close()
 
 	result.Status = res.StatusCode
-	// TODO: implement a boolean test of page validity here
-	// result.Valid = res.ContentLength > 2500
+
+	if(res.StatusCode == 200) {
+		fmt.Println(res.Body)
+		bodyBytes, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			result.ErrorMsg = err.Error()
+			result.Valid = false
+			return result
+		}
+		bodyText := string(bodyBytes)
+		if(strings.Contains(bodyText, "The page you requested was not found")) {
+			result.ErrorMsg = "Inactive or Errored Family Page"
+			result.Valid = false
+		} else {
+			result.Valid = true
+		}
+	}
+	
 	return result
 }
