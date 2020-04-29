@@ -116,7 +116,7 @@ func checker(client *http.Client, t Task) Result {
 		result.ErrorMsg = err.Error()
 		return result
 	}
-	// req.Header.Add("User-Agent", "facebookexternalhit/1.1")
+	req.Header.Add("User-Agent", "facebookexternalhit/1.1")
 
 	res, err := client.Do(req)
 	if err != nil {
