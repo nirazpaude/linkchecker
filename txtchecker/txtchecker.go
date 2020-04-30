@@ -2,16 +2,20 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/csv"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 )
 
 func main() {
 	// open/prep input file
-	inFilename := "../feed.txt"
+	start := time.Now()
+	inFilename := "../sampleFeed.txt"
 	inFile, err := os.Open(inFilename)
 	if err != nil {
 		panic(err)
@@ -33,7 +37,7 @@ func main() {
 	// TODO: understand why that was happening
 	taskChan := make(chan Task, 40000)
 	resultChan := make(chan Result, 40000)
-	workers := 8
+	workers := 100
 	for w := 0; w < workers; w++ {
 		go checkWorker(w+1, taskChan, resultChan)
 	}
@@ -68,6 +72,9 @@ func main() {
 	if err = resultWriter.Error(); err != nil {
 		panic(err)
 	}
+
+	elapsed := time.Since(start)
+	fmt.Println("Async link checking for", elapsed.Seconds(), "seconds")
 }
 
 type Task struct {
@@ -119,7 +126,24 @@ func checker(client *http.Client, t Task) Result {
 	defer res.Body.Close()
 
 	result.Status = res.StatusCode
-	// TODO: implement a boolean test of page validity here
-	// result.Valid = res.ContentLength > 2500
+	valid, errmsg := validateResponse(res)
+	result.Valid = valid
+	result.ErrorMsg = errmsg
+
 	return result
+}
+
+func validateResponse(resp *http.Response) (bool, string) {
+	if resp.StatusCode != 200 {
+		return false, "status was not 200 OK"
+	}
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Sprintf("error reading body: %+v", err)
+	}
+	if bytes.Contains(bodyBytes, []byte("The page you requested was not found")) {
+		return false, "family/product was not found, inactive, or otherwise inaccessible"
+	}
+
+	return true, "none"
 }
