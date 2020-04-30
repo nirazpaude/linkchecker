@@ -2,14 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/csv"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
 	"time"
-	"io/ioutil"
-	"strings"
 )
 
 func main() {
@@ -74,7 +74,7 @@ func main() {
 	}
 
 	elapsed := time.Since(start)
-    fmt.Println("Async link checking for", elapsed.Seconds(), "seconds")
+	fmt.Println("Async link checking for", elapsed.Seconds(), "seconds")
 }
 
 type Task struct {
@@ -126,23 +126,24 @@ func checker(client *http.Client, t Task) Result {
 	defer res.Body.Close()
 
 	result.Status = res.StatusCode
+	valid, errmsg := validateResponse(res)
+	result.Valid = valid
+	result.ErrorMsg = errmsg
 
-	if(res.StatusCode == 200) {
-		fmt.Println(res.Body)
-		bodyBytes, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			result.ErrorMsg = err.Error()
-			result.Valid = false
-			return result
-		}
-		bodyText := string(bodyBytes)
-		if(strings.Contains(bodyText, "The page you requested was not found")) {
-			result.ErrorMsg = "Inactive or Errored Family Page"
-			result.Valid = false
-		} else {
-			result.Valid = true
-		}
-	}
-	
 	return result
+}
+
+func validateResponse(resp *http.Response) (bool, string) {
+	if resp.StatusCode != 200 {
+		return false, "status was not 200 OK"
+	}
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Sprintf("error reading body: %+v", err)
+	}
+	if bytes.Contains(bodyBytes, []byte("The page you requested was not found")) {
+		return false, "family/product was not found, inactive, or otherwise inaccessible"
+	}
+
+	return true, "none"
 }
